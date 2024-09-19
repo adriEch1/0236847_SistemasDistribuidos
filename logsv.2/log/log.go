@@ -3,13 +3,14 @@ package log
 import (
 	"fmt"
 	"io"
-	api "logsv.2/api/v1"
 	"os"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+
+	api "logsv.2/api/v1"
 )
 
 type Log struct {
@@ -24,12 +25,14 @@ type Log struct {
 
 // NewLog START: newlog
 func NewLog(dir string, c Config) (*Log, error) {
+	//se configura el tamaño del store e index si no están configurados
 	if c.Segment.MaxStoreBytes == 0 {
 		c.Segment.MaxStoreBytes = 1024
 	}
 	if c.Segment.MaxIndexBytes == 0 {
 		c.Segment.MaxIndexBytes = 1024
 	}
+	// se hace una instancia del log
 	l := &Log{
 		Dir:    dir,
 		Config: c,
@@ -42,10 +45,13 @@ func NewLog(dir string, c Config) (*Log, error) {
 
 // START: setup
 func (l *Log) setup() error {
+	//va a leer los archivos  en el directorio donde esté el log
 	files, err := os.ReadDir(l.Dir)
 	if err != nil {
 		return err
 	}
+
+	//se busca el offset
 	var baseOffsets []uint64
 	for _, file := range files {
 		offStr := strings.TrimSuffix(
@@ -55,6 +61,8 @@ func (l *Log) setup() error {
 		off, _ := strconv.ParseUint(offStr, 10, 0)
 		baseOffsets = append(baseOffsets, off)
 	}
+
+	//se ordenan los offsets
 	sort.Slice(baseOffsets, func(i, j int) bool {
 		return baseOffsets[i] < baseOffsets[j]
 	})
@@ -66,6 +74,7 @@ func (l *Log) setup() error {
 		// the dup
 		i++
 	}
+	//si no existe el segmento, lo crea :0
 	if l.segments == nil {
 		if err = l.newSegment(l.Config.Segment.InitialOffset); err != nil {
 			return err
@@ -80,10 +89,12 @@ func (l *Log) setup() error {
 func (l *Log) Append(record *api.Record) (uint64, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	//agrega el record al segmento
 	off, err := l.activeSegment.Append(record)
 	if err != nil {
 		return 0, err
 	}
+	//si el segmento está lleno, se crea otro para empezar ahora con él
 	if l.activeSegment.IsMaxed() {
 		err = l.newSegment(off + 1)
 	}
@@ -97,6 +108,8 @@ func (l *Log) Read(off uint64) (*api.Record, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	var s *segment
+
+	//se busca el segmento donde esté el off
 	for _, segment := range l.segments {
 		if segment.baseOffset <= off && off < segment.nextOffset {
 			s = segment
@@ -104,10 +117,13 @@ func (l *Log) Read(off uint64) (*api.Record, error) {
 		}
 	}
 	// START: before
+
+	//si no se encuentra el segmento, hay error
 	if s == nil || s.nextOffset <= off {
 		return nil, fmt.Errorf("offset out of range: %d", off)
 	}
 	// END: before
+	//se lee el registro del segmento
 	return s.Read(off)
 }
 
@@ -115,6 +131,7 @@ func (l *Log) Read(off uint64) (*api.Record, error) {
 
 // START: newsegment
 func (l *Log) newSegment(off uint64) error {
+	// se crea el segmento y se añade a la lista de segmentos D
 	s, err := newSegment(l.Dir, off, l.Config)
 	if err != nil {
 		return err
@@ -128,8 +145,10 @@ func (l *Log) newSegment(off uint64) error {
 
 // START: close
 func (l *Log) Close() error {
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	// se cierran los segmentos
 	for _, segment := range l.segments {
 		if err := segment.Close(); err != nil {
 			return err
@@ -139,6 +158,7 @@ func (l *Log) Close() error {
 }
 
 func (l *Log) Remove() error {
+	//elimina el directorio donde están los segmentos :00000
 	if err := l.Close(); err != nil {
 		return err
 	}
@@ -146,6 +166,7 @@ func (l *Log) Remove() error {
 }
 
 func (l *Log) Reset() error {
+	//remueve y empieza de nuevo, lit un reseteo
 	if err := l.Remove(); err != nil {
 		return err
 	}
@@ -156,6 +177,7 @@ func (l *Log) Reset() error {
 
 // START: offsets
 func (l *Log) LowestOffset() (uint64, error) {
+	// da el offset del primer segmento
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.segments[0].baseOffset, nil
@@ -164,6 +186,7 @@ func (l *Log) LowestOffset() (uint64, error) {
 func (l *Log) HighestOffset() (uint64, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
+	//da el offset del último segmento guardado
 	off := l.segments[len(l.segments)-1].nextOffset
 	if off == 0 {
 		return 0, nil
@@ -177,6 +200,7 @@ func (l *Log) HighestOffset() (uint64, error) {
 func (l *Log) Truncate(lowest uint64) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	//nos ayuda a actualizar la lista de segmentos, los elimina :D
 	var segments []*segment
 	for _, s := range l.segments {
 		if s.nextOffset <= lowest+1 {
@@ -194,6 +218,7 @@ func (l *Log) Truncate(lowest uint64) error {
 // END: truncate
 
 // START: reader
+// lee los registros de los segmentos de una manera secuencial
 func (l *Log) Reader() io.Reader {
 	l.mu.RLock()
 	defer l.mu.RUnlock()

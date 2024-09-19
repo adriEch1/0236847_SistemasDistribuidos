@@ -9,6 +9,7 @@ import (
 	api "logsv.2/api/v1"
 )
 
+
 type segment struct {
 	store                  *store
 	index                  *index
@@ -18,11 +19,12 @@ type segment struct {
 
 // inicializa un segmento
 func newSegment(dir string, baseOffset uint64, c Config) (*segment, error) {
-	s := &segment{
+	s := &segment{ //inicializar el nuevo segmento con la configuración de tamaño y su offset base
 		baseOffset: baseOffset,
 		config:     c,
 	}
 	var err error
+	// creamos un archivo para el store, estos nos permitirá guardar los datos, decimos que vamos a crear, agregar o escribir y leer en un archivo e, 0644 son los permisos
 	storeFile, err := os.OpenFile(
 		path.Join(dir, fmt.Sprintf("%d%s", baseOffset, ".store")),
 		os.O_RDWR|os.O_CREATE|os.O_APPEND,
@@ -31,9 +33,13 @@ func newSegment(dir string, baseOffset uint64, c Config) (*segment, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	//instanciamosu un nuevo store al que le pasaremos el archivo que creamos :D
 	if s.store, err = newStore(storeFile); err != nil {
 		return nil, err
 	}
+
+	//creamos el archivo para el index
 	indexFile, err := os.OpenFile(
 		path.Join(dir, fmt.Sprintf("%d%s", baseOffset, ".index")),
 		os.O_RDWR|os.O_CREATE,
@@ -42,12 +48,17 @@ func newSegment(dir string, baseOffset uint64, c Config) (*segment, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	//inicializamos el index
 	if s.index, err = newIndex(indexFile, c); err != nil {
 		return nil, err
 	}
+	
+	//vemos si hay registros, si no hay, nuestro nextoffset(el que usaremos) será nuestro baseoffset
 	if off, _, err := s.index.Read(-1); err != nil {
 		s.nextOffset = baseOffset
 	} else {
+		//si sí hay registro, vamos a la última posición y le sumamos +1 para tener la posición nueva
 		s.nextOffset = baseOffset + uint64(off) + 1
 	}
 

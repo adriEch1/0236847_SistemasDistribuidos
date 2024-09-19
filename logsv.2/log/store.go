@@ -23,13 +23,13 @@ type store struct {
 }
 
 func newStore(f *os.File) (*store, error) {
-	//obtenemos la info del archivo en fi
+	//obtenemos la info del archivo en fi:su tamaño
 	fi, err := os.Stat(f.Name())
 	if err != nil {
 		return nil, err
 	}
 
-	//guardamos archivo y generamos nuevo buffer
+	//guardamos archivo y generamos nuevo buffer que nos permitirá escribir en el archivo
 	//tambien guardamos  tamaño
 	return &store{
 		File: f,
@@ -60,7 +60,7 @@ func (s *store) Append(data []byte) (nob uint64, pos uint64, err error) {
 		return 0, 0, errWrite
 	}
 
-	// actualizamos el tamaño del buffer
+	// actualizamos el tamaño del archivo con los nuevos datos
 	s.size += uint64(writeData) + lenWidth
 	// devolvemos el numero de bytes escritos, la posicion y el error
 	return uint64(writeData) + lenWidth, pos, nil
@@ -72,12 +72,12 @@ func (s *store) Read(pos uint64) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// asegurar que todos los los records estén guardados
+	// asegurar que todos los los records estén guardados en el disco 
 	if errRead := s.buf.Flush(); errRead != nil {
 		return nil, errRead
 	}
 
-	//ver si se puede leer el registro desde la posición
+	//ver si se puede leer el registro desde la posición que se nos dio
 	sizeReg := make([]byte, lenWidth)
 	if _, err := s.File.ReadAt(sizeReg, int64(pos)); err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (s *store) ReadAt(p []byte, off int64) (int, error) {
 func (s *store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	//se lee buffer completamente
+	//se lee buffer completamente para asegurar que no olvidamos nadaaaaaa
 	errBuf := s.buf.Flush()
 	if errBuf != nil {
 		return errBuf
