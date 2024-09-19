@@ -96,18 +96,6 @@ func (i *index) Write(off uint32, pos uint64) error {
 
 func (i *index) Close() error {
 
-	//aseguramos que se  guarde lo que hicimos en los mapeos en archivoy disco
-	if err := i.mmap.Sync(gommap.MS_SYNC); err != nil {
-		return err
-	}
-	if err := i.file.Sync(); err != nil {
-		return err
-	}
-
-	if err := i.file.Truncate(int64(i.size)); err != nil {
-		return err
-	}
-
 	//cerramos el archivo :D
 	return i.file.Close()
 

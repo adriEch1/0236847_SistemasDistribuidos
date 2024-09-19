@@ -55,7 +55,7 @@ func newSegment(dir string, baseOffset uint64, c Config) (*segment, error) {
 }
 
 func (s *segment) Append(record *api.Record) (offset uint64, err error) {
-	// guardamos el indice del segmento
+	// guardamos el indice del segmento actual que vamos a crear
 	curr := s.nextOffset
 	record.Offset = curr
 
